@@ -16,7 +16,7 @@ class CookbookPipeline implements Serializable {
 
     def script
 
-    def stages = []
+    List<Stage> stages = []
 
     DSL steps
 
@@ -28,7 +28,7 @@ class CookbookPipeline implements Serializable {
 
     static class Builder implements Serializable {
 
-        def stages = []
+        List<Stage> stages = []
 
         def script
 
@@ -57,8 +57,8 @@ class CookbookPipeline implements Serializable {
             return this
         }
 
-        def withDockerStage(def image, def path) {
-            stages << new Docker(script, jenkinsHelper)
+        def withDockerStage(String image, String params = '', String commands = '') {
+            stages << new Docker(script, jenkinsHelper, image, params, commands)
             return this
         }
 
@@ -82,13 +82,12 @@ class CookbookPipeline implements Serializable {
     }
 
     void execute() {
-
         for (Stage stage : stages) {
             try {
                 stage.execute()
             }
             catch (err) {
-                script.currentBuild.result = "FAILURE"
+                script.currentBuild.result = 'FAILURE'
                 script.error "Build failed: ${err.getMessage()}"
             }
         }
