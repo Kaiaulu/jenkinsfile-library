@@ -8,42 +8,47 @@ import org.mbsoft.jenkins.builders.MakeBuilder
 import org.mbsoft.jenkins.builders.CMakeBuilder
 
 /**
- * Factory for creating language-specific builders
+ * Factory for creating language-specific builders from BuildSystem enum
  * Ensures type safety: only builders compatible with the selected language can be created
  */
 class BuilderFactory {
 
     /**
-     * Create a builder for the given language
-     * @param language The programming language
-     * @param builderName The builder to use
+     * Create a builder for the given build system
+     * @param buildSystem The BuildSystem enum value
      * @param script Jenkins script context
-     * @return A Builder instance compatible with the language
-     * @throws IllegalArgumentException if builder is not compatible with language
+     * @return A Builder instance compatible with the build system
      */
-    static Builder createBuilder(Language language, String builderName, def script) {
-        String normalizedName = builderName.toLowerCase()
-        
-        if (!language.supportsBuilder(normalizedName)) {
-            throw new IllegalArgumentException(
-                "Builder '${builderName}' is not compatible with language '${language.id}'. " +
-                "Compatible builders: ${language.getCompatibleBuilders().join(', ')}"
-            )
-        }
-
-        switch (normalizedName) {
-            case 'maven':
+    static Builder createBuilder(BuildSystem buildSystem, def script) {
+        switch (buildSystem) {
+            case BuildSystem.MAVEN:
                 return new MavenBuilder(script)
-            case 'gradle':
+            case BuildSystem.GRADLE:
                 return new GradleBuilder(script)
-            case 'go':
+            case BuildSystem.GO:
                 return new GoBuilder(script)
-            case 'make':
+            case [BuildSystem.GO_MAKE, BuildSystem.CPP_MAKE]:
                 return new MakeBuilder(script)
-            case 'cmake':
+            case BuildSystem.CMAKE:
                 return new CMakeBuilder(script)
             default:
-                throw new IllegalArgumentException("Unknown builder: ${builderName}")
+                throw new IllegalArgumentException("Unknown build system: ${buildSystem}")
+        }
+    }
+
+    /**
+     * Validate that a build system is compatible with a language
+     * @param language The Language enum value
+     * @param buildSystem The BuildSystem enum value
+     * @throws IllegalArgumentException if not compatible
+     */
+    static void validateCompatibility(Language language, BuildSystem buildSystem) {
+        if (buildSystem.language != language) {
+            List<String> available = language.getAvailableBuilders().collect { it.id }
+            throw new IllegalArgumentException(
+                "BuildSystem '${buildSystem.id}' (${buildSystem.language.id}) is not compatible with language '${language.id}'. " +
+                "Available builders: ${available.join(', ')}"
+            )
         }
     }
 }

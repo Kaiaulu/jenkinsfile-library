@@ -1,6 +1,7 @@
 package org.mbsoft.jenkins
 
 import org.mbsoft.jenkins.config.Language
+import org.mbsoft.jenkins.config.BuildSystem
 import org.mbsoft.jenkins.config.BuilderFactory
 import org.mbsoft.jenkins.builders.Builder
 import org.mbsoft.jenkins.helpers.JenkinsHelper
@@ -16,16 +17,26 @@ import org.mbsoft.jenkins.stages.Tests
  * Provides a simple, fluent interface for building Jenkins declarative pipelines
  * with language and build tool selection.
  * 
- * Usage:
+ * The API is type-safe: you can only select a BuildSystem that is compatible
+ * with the chosen Language.
+ * 
+ * Usage with Language and BuildSystem enums:
  *   @Library('jenkinsfile-library') _
  *   def pipeline = new org.mbsoft.jenkins.CookbookPipeline(this)
  *   pipeline.language(Language.JAVA)
- *           .builder('maven')
+ *           .buildSystem(BuildSystem.MAVEN)
  *           .gitCheckout()
  *           .build()
  *           .test()
  *           .publish()
  *           .execute()
+ * 
+ * Or use the shorthand default pipeline:
+ *   @Library('jenkinsfile-library') _
+ *   new org.mbsoft.jenkins.CookbookPipeline(this)
+ *       .language(Language.GO)
+ *       .buildSystem(BuildSystem.GO)
+ *       .executeDefault()
  */
 class CookbookPipeline implements Serializable {
 
@@ -33,6 +44,7 @@ class CookbookPipeline implements Serializable {
     List<Stage> stages = []
     JenkinsHelper jenkinsHelper
     Language language
+    BuildSystem buildSystem
     Builder builder
 
     CookbookPipeline(script) {
@@ -43,7 +55,7 @@ class CookbookPipeline implements Serializable {
 
     /**
      * Sets the programming language for the project
-     * @param lang The Language enum value
+     * @param lang The Language enum value (JAVA, GO, CPLUS_PLUS)
      */
     def language(Language lang) {
         this.language = lang
@@ -52,18 +64,22 @@ class CookbookPipeline implements Serializable {
     }
 
     /**
-     * Sets the build tool/builder for the project
-     * Validates that the builder is compatible with the selected language
-     * @param builderName The name of the builder (e.g., 'maven', 'gradle', 'go')
-     * @throws IllegalArgumentException if builder is not compatible with language
+     * Sets the build system for the project
+     * Validates that the build system is compatible with the selected language
+     * @param buildSys The BuildSystem enum value
+     * @throws IllegalArgumentException if build system is not compatible with language
+     * @throws IllegalStateException if language is not set
      */
-    def builder(String builderName) {
+    def buildSystem(BuildSystem buildSys) {
         if (!language) {
-            throw new IllegalStateException('Language must be set before builder. Call .language() first.')
+            throw new IllegalStateException('Language must be set before build system. Call .language() first.')
         }
         
-        this.builder = BuilderFactory.createBuilder(language, builderName, script)
-        script.echo "Builder configured: ${builder.name} (compatible with ${language.id})"
+        BuilderFactory.validateCompatibility(language, buildSys)
+        
+        this.buildSystem = buildSys
+        this.builder = BuilderFactory.createBuilder(buildSys, script)
+        script.echo "Build system configured: ${buildSys.id} (${buildSys.description})"
         return this
     }
 
@@ -81,7 +97,7 @@ class CookbookPipeline implements Serializable {
      */
     def build() {
         if (!builder) {
-            throw new IllegalStateException('Builder must be configured before build stage. Call .builder() first.')
+            throw new IllegalStateException('Build system must be configured before build stage. Call .buildSystem() first.')
         }
         stages << new Build(script, jenkinsHelper, builder)
         return this
@@ -93,7 +109,7 @@ class CookbookPipeline implements Serializable {
      */
     def test() {
         if (!builder) {
-            throw new IllegalStateException('Builder must be configured before test stage. Call .builder() first.')
+            throw new IllegalStateException('Build system must be configured before test stage. Call .buildSystem() first.')
         }
         stages << new Tests(script, 'Test', jenkinsHelper, builder)
         return this
@@ -105,7 +121,7 @@ class CookbookPipeline implements Serializable {
      */
     def publish() {
         if (!builder) {
-            throw new IllegalStateException('Builder must be configured before publish stage. Call .builder() first.')
+            throw new IllegalStateException('Build system must be configured before publish stage. Call .buildSystem() first.')
         }
         stages << new Publish(script, jenkinsHelper, builder)
         return this
@@ -127,14 +143,14 @@ class CookbookPipeline implements Serializable {
     }
 
     /**
-     * Executes the default pipeline for the language and builder
+     * Executes the default pipeline for the language and build system
      */
     def executeDefault() {
         if (!language) {
             throw new IllegalStateException('Language must be set before executing. Call .language() first.')
         }
-        if (!builder) {
-            throw new IllegalStateException('Builder must be set before executing. Call .builder() first.')
+        if (!buildSystem) {
+            throw new IllegalStateException('Build system must be set before executing. Call .buildSystem() first.')
         }
         
         gitCheckout()
