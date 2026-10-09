@@ -1,27 +1,25 @@
 package org.mbsoft.jenkins.stages
 
+import org.mbsoft.jenkins.builders.Builder
 import org.mbsoft.jenkins.helpers.JenkinsHelper
 import org.mbsoft.jenkins.shared.AbstractStage
 
 /**
- * Created by marc on 28/02/17.
+ * Test stage. Delegates implementation to the selected build system.
  */
 class Tests extends AbstractStage {
 
-    Tests(Object script, String stageName, JenkinsHelper jenkinsHelper) {
+    private final Builder builder
+
+    Tests(Object script, String stageName, JenkinsHelper jenkinsHelper, Builder builder) {
         super(script, stageName, jenkinsHelper)
+        this.builder = builder
     }
 
     @Override
     void execute() {
         script.stage(stageName) {
-            test()
-        }
-    }
-
-    private test() {
-        script.node {
-            script.junit('**/target/surefire-reports/TEST-*.xml')
+            builder.test()
         }
     }
 }

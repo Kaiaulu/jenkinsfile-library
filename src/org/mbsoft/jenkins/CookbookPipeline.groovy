@@ -2,6 +2,8 @@ package org.mbsoft.jenkins
 
 import org.mbsoft.jenkins.config.Language
 import org.mbsoft.jenkins.config.BuildSystem
+import org.mbsoft.jenkins.config.BranchConfig
+import org.mbsoft.jenkins.config.BranchPattern
 import org.mbsoft.jenkins.config.BuilderFactory
 import org.mbsoft.jenkins.builders.Builder
 import org.mbsoft.jenkins.helpers.JenkinsHelper
@@ -10,15 +12,21 @@ import org.mbsoft.jenkins.stages.Build
 import org.mbsoft.jenkins.stages.GitCheckout
 import org.mbsoft.jenkins.stages.Publish
 import org.mbsoft.jenkins.stages.Tests
+import org.mbsoft.jenkins.stages.ConditionalStage
 
 /**
  * Jenkins Pipeline Global Library DSL
  * 
  * Provides a simple, fluent interface for building Jenkins declarative pipelines
- * with language and build tool selection.
+ * with language and build tool selection, and branch-aware stage execution.
  * 
  * The API is type-safe: you can only select a BuildSystem that is compatible
  * with the chosen Language.
+ * 
+ * Branch-aware execution allows different behavior based on the current Git branch:
+ * - Skip publish on feature branches
+ * - Run integration tests only on develop/main
+ * - Run benchmarks only on release branches
  * 
  * Usage with Language and BuildSystem enums:
  *   @Library('jenkinsfile-library') _
@@ -28,7 +36,7 @@ import org.mbsoft.jenkins.stages.Tests
  *           .gitCheckout()
  *           .build()
  *           .test()
- *           .publish()
+ *           .publishOnBranches(BranchPattern.DEVELOP, BranchPattern.MASTER)
  *           .execute()
  * 
  * Or use the shorthand default pipeline:
@@ -43,6 +51,7 @@ class CookbookPipeline implements Serializable {
     def script
     List<Stage> stages = []
     JenkinsHelper jenkinsHelper
+    BranchConfig branchConfig
     Language language
     BuildSystem buildSystem
     Builder builder
@@ -51,6 +60,7 @@ class CookbookPipeline implements Serializable {
         this.script = script
         this.stages = []
         this.jenkinsHelper = new JenkinsHelper(script)
+        this.branchConfig = new BranchConfig(script)
     }
 
     /**
@@ -116,6 +126,22 @@ class CookbookPipeline implements Serializable {
     }
 
     /**
+     * Adds a test stage that only runs on specific branches
+     * @param patterns Branch patterns on which to run tests
+     */
+    def testOnBranches(BranchPattern... patterns) {
+        if (!builder) {
+            throw new IllegalStateException('Build system must be configured before test stage. Call .buildSystem() first.')
+        }
+        stages << new ConditionalStage(
+            new Tests(script, 'Test', jenkinsHelper, builder),
+            { branchConfig.isBranch(it) },
+            patterns as List
+        )
+        return this
+    }
+
+    /**
      * Adds a publish/deploy stage
      * Uses the configured builder
      */
@@ -124,6 +150,33 @@ class CookbookPipeline implements Serializable {
             throw new IllegalStateException('Build system must be configured before publish stage. Call .buildSystem() first.')
         }
         stages << new Publish(script, jenkinsHelper, builder)
+        return this
+    }
+
+    /**
+     * Adds a publish/deploy stage that only runs on specific branches
+     * Useful for skipping publish on feature branches
+     * @param patterns Branch patterns on which to publish
+     */
+    def publishOnBranches(BranchPattern... patterns) {
+        if (!builder) {
+            throw new IllegalStateException('Build system must be configured before publish stage. Call .buildSystem() first.')
+        }
+        stages << new ConditionalStage(
+            new Publish(script, jenkinsHelper, builder),
+            { branchConfig.isBranch(it) },
+            patterns as List
+        )
+        return this
+    }
+
+    /**
+     * Adds a custom stage that only runs on specific branches
+     * @param stage The stage to add
+     * @param patterns Branch patterns on which to run the stage
+     */
+    def onBranches(Stage stage, BranchPattern... patterns) {
+        stages << new ConditionalStage(stage, { branchConfig.isBranch(it) }, patterns as List)
         return this
     }
 
@@ -144,6 +197,9 @@ class CookbookPipeline implements Serializable {
 
     /**
      * Executes the default pipeline for the language and build system
+     * Default behavior:
+     * - Always: gitCheckout, build, test
+     * - Only on develop/master: publish
      */
     def executeDefault() {
         if (!language) {
@@ -156,7 +212,7 @@ class CookbookPipeline implements Serializable {
         gitCheckout()
         build()
         test()
-        publish()
+        publishOnBranches(BranchPattern.DEVELOP, BranchPattern.MASTER, BranchPattern.MAIN)
         execute()
     }
 }
