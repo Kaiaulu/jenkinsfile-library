@@ -1,11 +1,14 @@
 package org.mbsoft.jenkins.builders
 
+import org.mbsoft.jenkins.config.LanguageVersion
+
 /**
- * Go builder implementation
+ * Go builder implementation with version support
  */
 class GoBuilder implements Builder {
     
     def script
+    LanguageVersion languageVersion
     
     GoBuilder(script) {
         this.script = script
@@ -17,7 +20,26 @@ class GoBuilder implements Builder {
     }
     
     @Override
+    void setLanguageVersion(LanguageVersion version) {
+        this.languageVersion = version
+    }
+    
+    @Override
+    LanguageVersion getLanguageVersion() {
+        return languageVersion
+    }
+    
+    private String getGoVersion() {
+        if (languageVersion) {
+            return languageVersion.version
+        }
+        return 'latest'
+    }
+    
+    @Override
     void build() {
+        def goVersion = getGoVersion()
+        script.echo "Building with Go ${goVersion}"
         script.sh('go build ./...')
     }
     

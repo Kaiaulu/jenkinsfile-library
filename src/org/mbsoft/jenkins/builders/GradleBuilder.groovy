@@ -1,11 +1,14 @@
 package org.mbsoft.jenkins.builders
 
+import org.mbsoft.jenkins.config.LanguageVersion
+
 /**
- * Gradle builder implementation
+ * Gradle builder implementation with version support
  */
 class GradleBuilder implements Builder {
     
     def script
+    LanguageVersion languageVersion
     
     GradleBuilder(script) {
         this.script = script
@@ -14,6 +17,16 @@ class GradleBuilder implements Builder {
     @Override
     String getName() {
         return 'Gradle'
+    }
+    
+    @Override
+    void setLanguageVersion(LanguageVersion version) {
+        this.languageVersion = version
+    }
+    
+    @Override
+    LanguageVersion getLanguageVersion() {
+        return languageVersion
     }
     
     @Override

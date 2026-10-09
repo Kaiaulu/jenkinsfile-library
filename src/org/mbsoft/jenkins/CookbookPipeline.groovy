@@ -4,6 +4,7 @@ import org.mbsoft.jenkins.config.Language
 import org.mbsoft.jenkins.config.BuildSystem
 import org.mbsoft.jenkins.config.BranchConfig
 import org.mbsoft.jenkins.config.BranchPattern
+import org.mbsoft.jenkins.config.LanguageVersion
 import org.mbsoft.jenkins.config.BuilderFactory
 import org.mbsoft.jenkins.builders.Builder
 import org.mbsoft.jenkins.helpers.JenkinsHelper
@@ -18,7 +19,8 @@ import org.mbsoft.jenkins.stages.ConditionalStage
  * Jenkins Pipeline Global Library DSL
  * 
  * Provides a simple, fluent interface for building Jenkins declarative pipelines
- * with language and build tool selection, and branch-aware stage execution.
+ * with language and build tool selection, language version configuration, and
+ * branch-aware stage execution.
  * 
  * The API is type-safe: you can only select a BuildSystem that is compatible
  * with the chosen Language.
@@ -28,10 +30,17 @@ import org.mbsoft.jenkins.stages.ConditionalStage
  * - Run integration tests only on develop/main
  * - Run benchmarks only on release branches
  * 
- * Usage with Language and BuildSystem enums:
+ * Language version selection allows specifying exact tool versions:
+ * - Java with Maven 3.9.2
+ * - Go 1.21
+ * - C++20 with CMake 3.24
+ * 
+ * Usage with Language, Version and BuildSystem enums:
  *   @Library('jenkinsfile-library') _
+ *   import org.mbsoft.jenkins.config.LanguageVersions
  *   def pipeline = new org.mbsoft.jenkins.CookbookPipeline(this)
  *   pipeline.language(Language.JAVA)
+ *           .languageVersion(LanguageVersions.JAVA_17)
  *           .buildSystem(BuildSystem.MAVEN)
  *           .gitCheckout()
  *           .build()
@@ -39,12 +48,12 @@ import org.mbsoft.jenkins.stages.ConditionalStage
  *           .publishOnBranches(BranchPattern.DEVELOP, BranchPattern.MASTER)
  *           .execute()
  * 
- * Or use the shorthand default pipeline:
- *   @Library('jenkinsfile-library') _
- *   new org.mbsoft.jenkins.CookbookPipeline(this)
- *       .language(Language.GO)
- *       .buildSystem(BuildSystem.GO)
- *       .executeDefault()
+ * Or with custom version:
+ *   def pipeline = new org.mbsoft.jenkins.CookbookPipeline(this)
+ *   pipeline.language(Language.GO)
+ *           .languageVersion(new LanguageVersion(Language.GO, '1.20'))
+ *           .buildSystem(BuildSystem.GO)
+ *           .executeDefault()
  */
 class CookbookPipeline implements Serializable {
 
@@ -53,6 +62,7 @@ class CookbookPipeline implements Serializable {
     JenkinsHelper jenkinsHelper
     BranchConfig branchConfig
     Language language
+    LanguageVersion languageVersion
     BuildSystem buildSystem
     Builder builder
 
@@ -74,6 +84,27 @@ class CookbookPipeline implements Serializable {
     }
 
     /**
+     * Sets the language version configuration
+     * @param version The LanguageVersion configuration
+     */
+    def languageVersion(LanguageVersion version) {
+        if (!language) {
+            throw new IllegalStateException('Language must be set before language version. Call .language() first.')
+        }
+        
+        if (version.language != language) {
+            throw new IllegalArgumentException(
+                "Language version '${version}' (${version.language.id}) does not match selected language '${language.id}'"
+            )
+        }
+        
+        this.languageVersion = version
+        script.echo "Language version configured: ${version}"
+        script.echo "Tool versions: ${version.allToolVersions}"
+        return this
+    }
+
+    /**
      * Sets the build system for the project
      * Validates that the build system is compatible with the selected language
      * @param buildSys The BuildSystem enum value
@@ -89,6 +120,11 @@ class CookbookPipeline implements Serializable {
         
         this.buildSystem = buildSys
         this.builder = BuilderFactory.createBuilder(buildSys, script)
+        
+        if (languageVersion) {
+            builder.setLanguageVersion(languageVersion)
+        }
+        
         script.echo "Build system configured: ${buildSys.id} (${buildSys.description})"
         return this
     }
@@ -199,7 +235,7 @@ class CookbookPipeline implements Serializable {
      * Executes the default pipeline for the language and build system
      * Default behavior:
      * - Always: gitCheckout, build, test
-     * - Only on develop/master: publish
+     * - Only on develop/master/main: publish
      */
     def executeDefault() {
         if (!language) {
